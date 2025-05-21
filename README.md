@@ -20,7 +20,14 @@ Shorekeeper menemukan anomali berupa teks acak yang disimpan dalam format hexade
 ```
 [YYYY-mm-dd][HH:MM:SS]: Successfully converted hexadecimal text <input_file> to <output_file>.
 ```
-
+```
+.
+├── anomali/
+│   ├── image/                # Menyimpan file hasil konversi
+│   └── conversion.log        # Log file konversi                
+├── hexed.c       # Program utama
+└── anomali.zip            # File input
+```
 ## Soal 2
 ### Deskripsi
 Seorang ilmuwan muda menemukan sebuah drive tua berisi pecahan data dari robot legendaris Baymax. File asli Baymax telah terfragmentasi menjadi 14 bagian (masing-masing 1KB) dengan nama Baymax.jpeg.000 hingga Baymax.jpeg.013 yang berada dalam folder relics. Ilmuwan tersebut ingin melihat Baymax dalam bentuk file utuh tanpa merusak fragmen aslinya.
