@@ -21,3 +21,32 @@ Shorekeeper menemukan anomali berupa teks acak yang disimpan dalam format hexade
 [YYYY-mm-dd][HH:MM:SS]: Successfully converted hexadecimal text <input_file> to <output_file>.
 ```
 
+## Soal 2
+### Deskripsi
+Seorang ilmuwan muda menemukan sebuah drive tua berisi pecahan data dari robot legendaris Baymax. File asli Baymax telah terfragmentasi menjadi 14 bagian (masing-masing 1KB) dengan nama Baymax.jpeg.000 hingga Baymax.jpeg.013 yang berada dalam folder relics. Ilmuwan tersebut ingin melihat Baymax dalam bentuk file utuh tanpa merusak fragmen aslinya.
+
+Tugas praktikan adalah :
+1. Membuat filesystem virtual menggunakan FUSE.
+2. File Baymax.jpeg ditampilkan secara utuh saat FUSE di-mount.
+3. File baru yang dibuat di direktori mount akan otomatis terpecah menjadi potongan 1KB dan disimpan di relics/.
+4. Jika file dihapus dari mount point, semua fragmennya di relics/ juga ikut terhapus.
+5. Seluruh aktivitas dicatat dalam activity.log.
+
+Struktur Folder :
+```
+├── baymax.c           # Implementasi FUSE
+├── relics/            # Folder penyimpanan fragmen
+│   ├── Baymax.jpeg.000
+│   ├── ...
+│   └── Baymax.jpeg.013
+├── mount_dir/         # Mount point FUSE
+└── activity.log       # Log aktivitas
+```
+
+Format Log Aktivitas
+```
+[2025-05-11 10:24:01] READ: Baymax.jpeg
+[2025-05-11 10:25:14] WRITE: hero.txt -> hero.txt.000, hero.txt.001
+[2025-05-11 10:26:03] DELETE: Baymax.jpeg.000 - Baymax.jpeg.013
+[2025-05-11 10:27:45] COPY: Baymax.jpeg -> /tmp/Baymax.jpeg
+```
