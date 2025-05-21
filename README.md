@@ -25,8 +25,8 @@ Shorekeeper menemukan anomali berupa teks acak yang disimpan dalam format hexade
 ├── anomali/
 │   ├── image/                # Menyimpan file hasil konversi
 │   └── conversion.log        # Log file konversi                
-├── hexed.c       # Program utama
-└── anomali.zip            # File input
+├── hexed.c                   # Program utama
+└── anomali.zip               # File input
 ```
 ## Soal 2
 ### Deskripsi
