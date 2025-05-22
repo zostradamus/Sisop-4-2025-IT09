@@ -595,7 +595,249 @@ int main(int argc, char *argv[]) {
     return fuse_main(argc, argv, &baymax_oper, NULL);
 }
 ```
+
 REVISI
+(full code baymax.c)
+```
+#define FUSE_USE_VERSION 31
+
+#include <fuse.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
+#include <stdarg.h>
+
+#define FRAGMENTS 14
+#define CHUNK_SIZE 1024
+
+static const char* relics_dir = "/home/shintaar/modul4/soal_2/relics";
+static const char* log_path = "/home/shintaar/modul4/soal_2/activity.log";
+
+void log_activity(const char* format, ...) {
+    FILE* log_file = fopen(log_path, "a");
+    if (!log_file) return;
+
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+
+    char timestamp[100];
+    strftime(timestamp, sizeof(timestamp), "[%Y-%m-%d %H:%M:%S]", t);
+
+    fprintf(log_file, "%s ", timestamp);
+
+    va_list args;
+    va_start(args, format);
+    vfprintf(log_file, format, args);
+    va_end(args);
+
+    fprintf(log_file, "\n");
+    fclose(log_file);
+}
+
+static int fs_getattr(const char* path, struct stat* stbuf) {
+    memset(stbuf, 0, sizeof(struct stat));
+
+    if (strcmp(path, "/") == 0) {
+        stbuf->st_mode = S_IFDIR | 0755;
+        stbuf->st_nlink = 2;
+        return 0;
+    }
+
+    const char* filename = path + 1;
+    char frag_path[256];
+    sprintf(frag_path, "%s/%s.000", relics_dir, filename);
+
+    if (access(frag_path, F_OK) == 0) {
+        int total_frag = 0;
+        for (int i = 0; i < 100; i++) {
+            sprintf(frag_path, "%s/%s.%03d", relics_dir, filename, i);
+            if (access(frag_path, F_OK) != 0)
+                break;
+            total_frag++;
+        }
+
+        stbuf->st_mode = S_IFREG | 0666;
+        stbuf->st_nlink = 1;
+        stbuf->st_size = total_frag * CHUNK_SIZE;
+        return 0;
+    }
+
+    return -ENOENT;
+}
+
+static int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi) {
+    if (strcmp(path, "/") != 0)
+    return -ENOENT;
+
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+    filler(buf, "Baymax.jpeg", NULL, 0);
+
+    return 0;
+}
+
+static int fs_open(const char* path, struct fuse_file_info* fi) {
+    const char* filename = path + 1;
+    char frag_path[256];
+    sprintf(frag_path, "%s/%s.000", relics_dir, filename);
+
+    int fd = open(frag_path, fi->flags);
+    if (fd == -1)
+        return -errno;
+
+    fi->fh = fd;
+    return 0;
+}
+
+static int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+    if (strcmp(path, "/Baymax.jpeg") != 0)
+        return -ENOENT;
+
+    size_t total_size = FRAGMENTS * CHUNK_SIZE;
+    if (offset >= total_size)
+        return 0;
+
+    if (offset + size > total_size)
+        size = total_size - offset;
+
+    size_t start_frag = offset / CHUNK_SIZE;
+    size_t end_frag = (offset + size - 1) / CHUNK_SIZE;
+
+    size_t copied = 0;
+    for (size_t i = start_frag; i <= end_frag; ++i) {
+        char frag_path[256];
+        sprintf(frag_path, "%s/Baymax.jpeg.%03zu", relics_dir, i);
+
+        FILE* fp = fopen(frag_path, "rb");
+        if (!fp) {
+	    perror(frag_path);
+	    return -errno;
+	}
+
+        char chunk[CHUNK_SIZE];
+        size_t len = fread(chunk, 1, CHUNK_SIZE, fp);
+        fclose(fp);
+
+        size_t frag_start = (i == start_frag) ? (offset % CHUNK_SIZE) : 0;
+        size_t frag_end = (i == end_frag) ? ((offset + size - 1) % CHUNK_SIZE + 1) : len;
+
+        memcpy(buf + copied, chunk + frag_start, frag_end - frag_start);
+        copied += frag_end - frag_start;
+    }
+
+    log_activity("READ: Baymax.jpeg");
+
+	pid_t pid = fuse_get_context()->pid;
+	char proc_path[256];
+	sprintf(proc_path, "/proc/%d/cmdline", pid);
+	FILE* f = fopen(proc_path, "r");
+		if (f) {
+	    char cmdline[256] = {0};
+	    fread(cmdline, 1, sizeof(cmdline), f);
+	    fclose(f);
+
+    if (strstr(cmdline, "cp")) {
+        log_activity("COPY: Baymax.jpeg");
+      }
+    }
+
+    return copied;
+}
+
+static int fs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
+    const char* filename = path + 1;
+
+    char frag_path[256];
+    sprintf(frag_path, "%s/%s.000", relics_dir, filename);
+
+    int fd = open(frag_path, O_WRONLY | O_CREAT, 0666);
+    if (fd == -1) return -errno;
+
+    fi->fh = fd;
+
+    log_activity("CREATE: %s.000", filename);
+    return 0;
+}
+
+static int fs_write(const char* path, const char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+    const char* filename = path + 1;
+
+    if (fi->fh > 0) {
+        int res = pwrite(fi->fh, buf, size, offset);
+        if (res == -1) return -errno;
+
+        log_activity("WRITE: %s -> %s.000", filename, filename);
+        return res;
+    }
+
+    size_t parts = (size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    for (size_t i = 0; i < parts; ++i) {
+        char frag_path[256];
+        sprintf(frag_path, "%s/%s.%03zu", relics_dir, filename, i);
+
+        FILE* fp = fopen(frag_path, "wb");
+        if (!fp) return -errno;
+
+        size_t chunk_size = (i < parts - 1) ? CHUNK_SIZE : (size - i * CHUNK_SIZE);
+        fwrite(buf + i * CHUNK_SIZE, 1, chunk_size, fp);
+        fclose(fp);
+    }
+
+    char log_msg[512] = "";
+    sprintf(log_msg, "WRITE: %s -> ", filename);
+    for (size_t i = 0; i < parts; ++i) {
+        char frag[32];
+        sprintf(frag, "%s.%03zu", filename, i);
+        strcat(log_msg, frag);
+        if (i < parts - 1) strcat(log_msg, ", ");
+    }
+    log_activity("%s", log_msg);
+
+    return size;
+}
+
+static int fs_unlink(const char* path) {
+    const char* filename = path + 1;
+    int last_idx = -1;
+
+    for (int i = 0; i < 100; ++i) {
+        char frag_path[256];
+        sprintf(frag_path, "%s/%s.%03d", relics_dir, filename, i);
+        if (access(frag_path, F_OK) != 0)
+            break;
+        remove(frag_path);
+        last_idx = i;
+    }
+
+    if (last_idx >= 0) {
+        log_activity("DELETE: %s.000 - %s.%03d", filename, filename, last_idx);
+    }
+
+    return 0;
+}
+
+static struct fuse_operations fs_oper = {
+    .getattr = fs_getattr,
+    .readdir = fs_readdir,
+    .open = fs_open,
+    .read = fs_read,
+    .create = fs_create,
+    .write = fs_write,
+    .unlink = fs_unlink,
+};
+
+int main(int argc, char* argv[]) {
+    umask(0);
+    return fuse_main(argc, argv, &fs_oper, NULL);
+}
+```
+
 OUTPUT
 
 
