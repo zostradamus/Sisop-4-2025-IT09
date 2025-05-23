@@ -836,7 +836,144 @@ int main(int argc, char* argv[]) {
     umask(0);
     return fuse_main(argc, argv, &fs_oper, NULL);
 }
+
 ```
+## Soal 3
+# AntiNK (Anti Napis Kimcun)
+
+## 📖 Overview
+
+Pujo, komting angkatan 24 yang baik hati, membangun sistem **AntiNK** (Anti Napis Kimcun) untuk mendeteksi dan menanggulangi "kenakalan" mahasiswa Nafis dan Kimcun. Sistem ini menggunakan **FUSE** (Filesystem in Userspace) di dalam **Docker** container, serta **docker-compose** untuk mengelola:
+
+* `antink-server` (FUSE filesystem)
+* `antink-logger` (monitoring log real-time)
+
+Semua file asli tetap aman di host, transformasi terjadi on-the-fly dalam container.
+
+---
+
+## 🗂️ Repository Structure
+
+```
+soal_3/
+├── Dockerfile             # Build image antink-server
+├── docker-compose.yml     # Orkestrasi antink-server & antink-logger
+├── antink.c               # FUSE filesystem implementation
+├── data/                  # Bind mount untuk file asli (host)
+└── logs/
+    └── it24.log           # Bind mount untuk log (host)
+```
+
+---
+
+## ⚙️ Installation & Setup
+
+1. **Clone** this repo:
+
+   ```bash
+   git clone <repo-url>
+   cd soal_3
+   ```
+2. **Buat direktori** untuk data dan log:
+
+   ```bash
+   mkdir -p data logs
+   ```
+3. **Build & start** layanan:
+
+   ```bash
+   docker-compose up --build -d
+   ```
+4. **Verifikasi** container berjalan:
+
+   ```bash
+   docker ps
+   # antink-server   Up
+   # antink-logger   Up
+   ```
+
+---
+
+## 📦 Code Explanation
+
+### 1. `antink.c` (FUSE filesystem)
+
+* **root\_dir**, **log\_path**, **keys**: menentukan direktori asli, path log, dan kata kunci `nafis`/`kimcun`.
+* **write\_log**: fungsi utilitas mencatat timestamp + pesan ke `it24.log`.
+* **fullpath**: membangun path absolut di host.
+* **is\_bad** / **is\_reversed\_bad**: mendeteksi nama file asli atau reversed yang mengandung keyword.
+* **strrev**: membalik string di-place.
+
+#### FUSE callbacks:
+
+* **getattr**: intercept `stat()`, membalik nama jika berbahaya, log `ALERT` + `REVERSE`, lalu `lstat` host.
+* **readdir**: intercept `ls`, untuk setiap file:
+
+  * jika `is_bad`, log `ALERT` + `REVERSE`, tampilkan nama dibalik.
+* **open**: intercept `open()`, jika reversed/ berbahaya, log `REVERSE`, buka file asli.
+* **read**: intercept `read()`, jika normal `.txt`, terapkan ROT13 + log `ENCRYPT`; jika berbahaya, log `REVERSE`; catat `INFO read`.
+
+### 2. `Dockerfile`
+
+* **Base**: `ubuntu:20.04`, install `gcc`, `pkg-config`, `fuse3`, `libfuse3-dev`.
+* **Compile**: `gcc antink.c -o antink-fuse $(pkg-config fuse3 --cflags --libs)`.
+* **Workspace**: buat `/it24_host`, `/antink_mount`, `/antink_logs`.
+* **Entrypoint**: jalankan `antink-fuse` di foreground di `/antink_mount`.
+
+### 3. `docker-compose.yml`
+
+* **antink-server**:
+
+  * `privileged: true`, `devices: /dev/fuse`, `security_opt: apparmor:unconfined`.
+  * Volumes: `./data:/it24_host:ro`, `antink_mount:/antink_mount`, `./logs:/antink_logs`.
+* **antink-logger**:
+
+  * Image `alpine`, `tail -F logs/it24.log`.
+  * Volume `./logs:/antink_logs:ro`.
+
+---
+
+## 🧪 Testing
+
+1. **File normal** (ROT13 & ENCRYPT):
+
+   ```bash
+   echo "hello world" > data/foo.txt
+   docker exec antink-server cat /antink_mount/foo.txt
+   # uryyb jbeyq
+   ```
+2. **File berbahaya** (reverse & plain):
+
+   ```bash
+   echo "secret kimcun" > data/kimcun_plan.txt
+   docker exec antink-server ls /antink_mount
+   # txt.nalp_nucmik
+   docker exec antink-server cat /antink_mount/txt.nalp_nucmik
+   # secret kimcun
+   ```
+3. **Monitoring log**:
+
+   ```bash
+   docker logs -f antink-logger
+   ```
+4. **Host files** tidak berubah:
+
+   ```bash
+   cat data/foo.txt
+   cat data/kimcun_plan.txt
+   ```
+
+---
+
+## 🧹 Cleanup
+
+```bash
+# Stop dan remove container & volumes
+docker-compose down --volumes
+```
+
+---
+
 
 
 
