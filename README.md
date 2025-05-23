@@ -1140,7 +1140,7 @@ void decode(...) // kebalikan dari encode
 void rot13(...) // digunakan untuk Dragon Chiho
 ```
 #### Fungsi Operasi FUSE
-1. Mengubah path FUSE ke path asli di chiho/, menambahkan ekstensi (getattr)
+##### Mengubah path FUSE ke path asli di chiho/, menambahkan ekstensi (getattr)
 - starter: .mai
 - metro: .ccc
 - dragon: .rot
@@ -1148,19 +1148,19 @@ Contoh: /starter/abc → chiho/starter/abc.mai
 ```
 static int xmp_getattr(const char *path, struct stat *stbuf)
 ```
-2. readdir
+##### readdir
 - Membaca isi direktori.
 - Memfilter dan menghilangkan ekstensi .mai, .ccc, .rot saat ditampilkan di direktori FUSE.
 ```
 static int xmp_readdir(...)
 ```
-3. open
+##### open
 - Membuka file asli berdasarkan path FUSE.
 - Sama seperti getattr, menambahkan ekstensi berdasarkan area.
 ```
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 ```
-4. read
+##### read
 Membaca isi file:
 - Untuk metro: decode isi file sebelum diberikan ke FUSE.
 - Untuk dragon: lakukan ROT13 decoding.
@@ -1168,7 +1168,7 @@ Membaca isi file:
 ```
 static int xmp_read(...)
 ```
-5. write
+##### write
 Menulis ke file:
 - Pertama baca isi file dan decode (metro dan dragon).
 - Gabungkan dengan buffer baru (data baru).
@@ -1176,19 +1176,18 @@ Menulis ke file:
 ```
 static int xmp_write(...)
 ```
-6. create
+##### create
 Membuat file baru dengan ekstensi:
 - starter: .mai
 - metro: .ccc
 - dragon: .rot
-7. unlink
+##### unlink
 Menghapus file. Sama, mengubah path dan menambahkan ekstensi sebelum menjalankan unlink().
 ```
 static int xmp_unlink(const char *path)
 ```
-8. xmp_oper dan main
-1.
-2. Mendaftarkan fungsi-fungsi yang diimplementasikan ke dalam struktur operasi FUSE.
+##### xmp_oper dan main
+1. Mendaftarkan fungsi-fungsi yang diimplementasikan ke dalam struktur operasi FUSE.
 ```
 static struct fuse_operations xmp_oper = {...}
 ```
