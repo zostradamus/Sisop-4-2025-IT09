@@ -841,14 +841,12 @@ int main(int argc, char* argv[]) {
 ## Soal 3
 # AntiNK (Anti Napis Kimcun)
 
-## 📖 Overview
-
 Pujo, komting angkatan 24 yang baik hati, membangun sistem **AntiNK** (Anti Napis Kimcun) untuk mendeteksi dan menanggulangi "kenakalan" mahasiswa Nafis dan Kimcun. Sistem ini menggunakan **FUSE** (Filesystem in Userspace) di dalam **Docker** container, serta **docker-compose** untuk mengelola:
 
 * `antink-server` (FUSE filesystem)
 * `antink-logger` (monitoring log real-time)
 
-Semua file asli tetap aman di host, transformasi terjadi on-the-fly dalam container.
+Transformasi file terjadi *on-the-fly* dalam container tanpa mengubah file asli di host.
 
 ---
 
@@ -856,9 +854,9 @@ Semua file asli tetap aman di host, transformasi terjadi on-the-fly dalam contai
 
 ```
 soal_3/
-├── Dockerfile             # Build image antink-server
+├── Dockerfile             # Dockerfile untuk antink-server
 ├── docker-compose.yml     # Orkestrasi antink-server & antink-logger
-├── antink.c               # FUSE filesystem implementation
+├── antink.c               # Implementasi FUSE filesystem
 ├── data/                  # Bind mount untuk file asli (host)
 └── logs/
     └── it24.log           # Bind mount untuk log (host)
@@ -868,95 +866,216 @@ soal_3/
 
 ## ⚙️ Installation & Setup
 
-1. **Clone** this repo:
+1. **Clone repository**
 
    ```bash
    git clone <repo-url>
    cd soal_3
    ```
-2. **Buat direktori** untuk data dan log:
+2. **Create host directories**
 
    ```bash
    mkdir -p data logs
    ```
-3. **Build & start** layanan:
+3. **Build and start all services**
 
    ```bash
    docker-compose up --build -d
    ```
-4. **Verifikasi** container berjalan:
+4. **Verify containers**
 
    ```bash
    docker ps
-   # antink-server   Up
-   # antink-logger   Up
+   # Should see antink-server and antink-logger running
    ```
 
 ---
 
 ## 📦 Code Explanation
 
-### 1. `antink.c` (FUSE filesystem)
+### 1. `antink.c`
 
-* **root\_dir**, **log\_path**, **keys**: menentukan direktori asli, path log, dan kata kunci `nafis`/`kimcun`.
-* **write\_log**: fungsi utilitas mencatat timestamp + pesan ke `it24.log`.
-* **fullpath**: membangun path absolut di host.
-* **is\_bad** / **is\_reversed\_bad**: mendeteksi nama file asli atau reversed yang mengandung keyword.
-* **strrev**: membalik string di-place.
+```c
+#define FUSE_USE_VERSION 35
+#include <fuse3/fuse.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <ctype.h>
+#include <time.h>
+#include <stdarg.h>
 
-#### FUSE callbacks:
+static const char *root_dir = "/it24_host";          // Direktori asal di host
+static const char *log_path = "/antink_logs/it24.log"; // Path file log di container
+static const char *keys[] = { "nafis", "kimcun", NULL }; // Kata kunci deteksi file berbahaya
+```
 
-* **getattr**: intercept `stat()`, membalik nama jika berbahaya, log `ALERT` + `REVERSE`, lalu `lstat` host.
-* **readdir**: intercept `ls`, untuk setiap file:
+* **root\_dir** dan **log\_path**: Lokasi mount bind host
+* **keys\[]**: Mendefinisikan kata kunci
 
-  * jika `is_bad`, log `ALERT` + `REVERSE`, tampilkan nama dibalik.
-* **open**: intercept `open()`, jika reversed/ berbahaya, log `REVERSE`, buka file asli.
-* **read**: intercept `read()`, jika normal `.txt`, terapkan ROT13 + log `ENCRYPT`; jika berbahaya, log `REVERSE`; catat `INFO read`.
+```c
+// Fungsi untuk menuliskan log dengan timestamp
+static void write_log(const char *fmt, ...) { ... }
+```
+
+* Membuka `it24.log`, menambahkan timestamp, dan mencatat pesan dengan format variadic.
+
+```c
+// Membangun path absolut di host
+static void fullpath(char buf[PATH_MAX], const char *path) {
+    snprintf(buf, PATH_MAX, "%s%s", root_dir, path);
+}
+```
+
+```c
+// Deteksi nama file berbahaya
+static int is_bad(const char *name) { ... }
+// Deteksi nama yang sudah dibalik
+static int is_reversed_bad(const char *name) { ... }
+```
+
+* `is_bad()`: Memeriksa substring `nafis` atau `kimcun`
+* `is_reversed_bad()`: Membalik string dan memeriksa kembali
+
+```c
+// Reverse string in-place
+static void strrev(char *s) { ... }
+```
+
+#### FUSE callbacks
+
+```c
+static int ak_getattr(const char *path, struct stat *st, struct fuse_file_info *fi) { ... }
+```
+
+* **Intercept** `stat()`
+* Jika `is_bad` atau `is_reversed_bad`, log **ALERT** dan **REVERSE**
+* Panggil `lstat` pada file asli
+
+```c
+static int ak_readdir(const char *path, void *buf, fuse_fill_dir_t filler, ...) { ... }
+```
+
+* **Intercept** `ls` (directory listing)
+* Untuk setiap entri, jika `is_bad`, log **ALERT** dan **REVERSE**, tampilkan nama dibalik
+
+```c
+static int ak_open(const char *path, struct fuse_file_info *fi) { ... }
+```
+
+* **Intercept** `open()`
+* Jika file berbahaya, log **REVERSE** sebelum membuka file
+
+```c
+static int ak_read(const char *path, char *buf, size_t size, off_t offset, ...) { ... }
+```
+
+* **Intercept** `read()`
+* Jika normal `.txt`, terapkan **ROT13** dan log **ENCRYPT**
+* Jika berbahaya, log **REVERSE**
+
+```c
+int main(int argc, char *argv[]) {
+    umask(0);
+    return fuse_main(argc, argv, &ops, NULL);
+}
+```
+
+* Inisialisasi FUSE dengan operasi yang telah didefinisikan
+
+---
 
 ### 2. `Dockerfile`
 
-* **Base**: `ubuntu:20.04`, install `gcc`, `pkg-config`, `fuse3`, `libfuse3-dev`.
-* **Compile**: `gcc antink.c -o antink-fuse $(pkg-config fuse3 --cflags --libs)`.
-* **Workspace**: buat `/it24_host`, `/antink_mount`, `/antink_logs`.
-* **Entrypoint**: jalankan `antink-fuse` di foreground di `/antink_mount`.
+```dockerfile
+FROM ubuntu:20.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    gcc make pkg-config fuse3 libfuse3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN mkdir -p /it24_host /antink_mount /antink_logs
+COPY antink.c .
+RUN gcc -std=gnu11 -Wall -Wextra antink.c -o antink-fuse $(pkg-config fuse3 --cflags --libs)
+
+ENTRYPOINT ["/app/antink-fuse"]
+CMD ["/antink_mount", "-f"]
+```
+
+* **Install**: compiler, pkg-config, FUSE3 dev
+* **Direktori kerja**: membuat mount points dalam container
+* **Compile**: menghasilkan binary `antink-fuse`
+* **Entrypoint** & **CMD**: menjalankan FUSE di foreground pada `/antink_mount`
+
+---
 
 ### 3. `docker-compose.yml`
 
-* **antink-server**:
+```yaml
+version: '3.8'
+services:
+  antink-server:
+    build: .
+    container_name: antink-server
+    privileged: true        # akses FUSE
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ./data:/it24_host:ro
+      - antink_mount:/antink_mount
+      - ./logs:/antink_logs
 
-  * `privileged: true`, `devices: /dev/fuse`, `security_opt: apparmor:unconfined`.
-  * Volumes: `./data:/it24_host:ro`, `antink_mount:/antink_mount`, `./logs:/antink_logs`.
-* **antink-logger**:
+  antink-logger:
+    image: alpine:3.14
+    container_name: antink-logger
+    depends_on:
+      - antink-server
+    entrypoint: sh -c "tail -F /antink_logs/it24.log"
+    volumes:
+      - ./logs:/antink_logs:ro
 
-  * Image `alpine`, `tail -F logs/it24.log`.
-  * Volume `./logs:/antink_logs:ro`.
+volumes:
+  antink_mount:
+```
+
+* **antink-server**: menjalankan FUSE, mount host `data/` dan `logs/`
+* **antink-logger**: menampilkan log secara real-time
 
 ---
 
 ## 🧪 Testing
 
-1. **File normal** (ROT13 & ENCRYPT):
+1. **File normal** (ROT13 + ENCRYPT)
 
    ```bash
    echo "hello world" > data/foo.txt
    docker exec antink-server cat /antink_mount/foo.txt
-   # uryyb jbeyq
+   # → uryyb jbeyq
    ```
-2. **File berbahaya** (reverse & plain):
+2. **File berbahaya** (reverse + plain)
 
    ```bash
    echo "secret kimcun" > data/kimcun_plan.txt
    docker exec antink-server ls /antink_mount
-   # txt.nalp_nucmik
+   # → txt.nalp_nucmik
    docker exec antink-server cat /antink_mount/txt.nalp_nucmik
-   # secret kimcun
+   # → secret kimcun
    ```
-3. **Monitoring log**:
+3. **Log**:
 
    ```bash
    docker logs -f antink-logger
+   # menampilkan ALERT, REVERSE, ENCRYPT
    ```
-4. **Host files** tidak berubah:
+4. **File asli** tetap aman:
 
    ```bash
    cat data/foo.txt
@@ -968,12 +1087,5 @@ soal_3/
 ## 🧹 Cleanup
 
 ```bash
-# Stop dan remove container & volumes
 docker-compose down --volumes
 ```
-
----
-
-
-
-
