@@ -1086,6 +1086,33 @@ volumes:
 
 ## 🧹 Cleanup
 
+
 ```bash
 docker-compose down --volumes
+```
+
+## Soal 4
+### Deskripsi
+SEGA menunjuk kita sebagai administrator sistem file chiho di universe maimai. Tugas utama adalah memastikan 7 area dalam filesystem chiho/ berfungsi sesuai spesifikasi. Praktikum kali ini hanya mengimplementasikan 3 area pertama:
+1. Starter Area (/starter)
+- File disimpan dengan ekstensi .mai di direktori asli (chiho/starter).
+- Ekstensi tersebut disembunyikan dari pengguna saat diakses melalui fuse_dir/starter.
+2. Metropolis Area (/metro)
+- File disimpan dengan ekstensi .ccc.
+- Konten file di-encode menggunakan algoritma shifting berdasarkan posisi byte (i % 256).
+- Saat dibaca, dilakukan decode untuk mengembalikan isi file ke bentuk asli.
+3. Dragon Area (/dragon)
+- File disimpan dengan ekstensi .rot.
+- Isi file di-encrypt menggunakan algoritma ROT13 saat ditulis dan didekripsi saat dibaca.
+```
+├── chiho/
+│   ├── starter/
+│   ├── metro/
+│   ├── dragon/
+│   └── ...
+└── fuse_dir/
+    ├── starter/
+    ├── metro/
+    ├── dragon/
+    └── ...
 ```
